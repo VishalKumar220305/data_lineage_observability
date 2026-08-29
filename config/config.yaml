@@ -1,0 +1,97 @@
+# =============================================================================
+# Data Lineage & Observability Dashboard — config.yaml
+# This is the single place that defines "how this project is wired up."
+# The pipeline jobs, the lineage parser, and the DQ checks all read from
+# here instead of having values hardcoded — this is what makes the design
+# config-driven, per our decision to take the "middle path" on generalization.
+# =============================================================================
+
+project:
+  name: "olist_lineage_observability"
+  description: "Standalone data lineage & observability project on the Olist e-commerce dataset"
+
+# -----------------------------------------------------------------------------
+# Database connections
+# Actual credentials live in .env (never in this file, never committed).
+# This section just says WHICH env vars to use and where things live.
+# -----------------------------------------------------------------------------
+database:
+  metadata_store:
+    type: mysql
+    host_env: DB_HOST          # expects env var DB_HOST, e.g. localhost
+    port_env: DB_PORT          # expects env var DB_PORT, e.g. 3306
+    user_env: DB_USER
+    password_env: DB_PASSWORD
+    database_env: DB_NAME      # e.g. olist_lineage_metadata
+
+  warehouse:
+    type: mysql
+    host_env: DB_HOST
+    port_env: DB_PORT
+    user_env: DB_USER
+    password_env: DB_PASSWORD
+    database_env: WAREHOUSE_DB_NAME   # e.g. olist_warehouse
+
+# -----------------------------------------------------------------------------
+# Table naming conventions
+# The AST lineage parser (Day 2) uses these patterns to recognize what counts
+# as a "source" read vs. a "target" write when it scans PySpark job scripts.
+# -----------------------------------------------------------------------------
+naming_conventions:
+  staging_prefix: "stg_"        # staging/source tables, e.g. stg_customers
+  dimension_prefix: "Dim_"      # warehouse dimension tables, e.g. Dim_Customer
+  fact_prefix: "Fact_"          # warehouse fact tables, e.g. Fact_Order_Items
+  pyspark_read_patterns:
+    - "spark.read.table"
+    - "spark.read.csv"
+    - "spark.table"
+  pyspark_write_patterns:
+    - ".saveAsTable"
+    - ".write.mode"
+
+# -----------------------------------------------------------------------------
+# Pipeline jobs this project instruments (Day 1-2)
+# Each entry maps a job script to what it's expected to read/write —
+# used as a sanity cross-check against what the AST parser actually finds.
+# -----------------------------------------------------------------------------
+pipeline_jobs:
+  - name: load_customers
+    script_path: "pipeline/jobs/load_customers.py"
+  - name: load_orders
+    script_path: "pipeline/jobs/load_orders.py"
+  - name: load_products
+    script_path: "pipeline/jobs/load_products.py"
+  - name: load_sellers
+    script_path: "pipeline/jobs/load_sellers.py"
+  - name: build_warehouse
+    script_path: "pipeline/jobs/build_warehouse.py"
+
+# -----------------------------------------------------------------------------
+# Data quality check thresholds
+# Every threshold lives here so tightening/loosening a rule is a config
+# change, not a code change.
+# -----------------------------------------------------------------------------
+data_quality:
+  null_checks:
+    max_null_rate_pct: 1.0        # fail if more than 1% of a checked column is null
+  duplicate_checks:
+    max_duplicate_rate_pct: 0.5   # fail if more than 0.5% of rows are exact duplicates
+  referential_integrity:
+    fail_on_any_orphan: true      # any row with a broken FK reference fails the check
+  freshness_checks:
+    max_staleness_hours: 24       # fail if a table hasn't been refreshed in 24h
+  schema_drift:
+    fail_on_column_removed: true
+    fail_on_type_changed: true
+    warn_on_column_added: true    # new columns warn, don't fail (non-breaking)
+
+# -----------------------------------------------------------------------------
+# Alerting
+# -----------------------------------------------------------------------------
+alerting:
+  channel: email
+  email:
+    smtp_host_env: SMTP_HOST
+    smtp_port_env: SMTP_PORT
+    sender_email_env: ALERT_SENDER_EMAIL
+    recipient_email_env: ALERT_RECIPIENT_EMAIL
