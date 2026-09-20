@@ -6,3 +6,19 @@ venv/
 data/*.csv
 *.db
 .DS_Store
+
+# Spark's own generated files -- these are the actual data/metadata,
+# not source code, and can be huge. Never commit these.
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Java/Hadoop tooling, if you set it up inside the project folder
+tools/
+
+# General logs
+*.log
+
+
+for_me/
+docs/

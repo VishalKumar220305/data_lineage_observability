@@ -5,3 +5,4 @@ pyyaml==6.0.1
 networkx==3.3
 plotly==5.22.0
 streamlit==1.36.0
+pandas==2.2.2

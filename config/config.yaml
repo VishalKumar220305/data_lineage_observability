@@ -25,12 +25,10 @@ database:
     database_env: DB_NAME      # e.g. olist_lineage_metadata
 
   warehouse:
-    type: mysql
-    host_env: DB_HOST
-    port_env: DB_PORT
-    user_env: DB_USER
-    password_env: DB_PASSWORD
-    database_env: WAREHOUSE_DB_NAME   # e.g. olist_warehouse
+    type: spark_hive_embedded    # Spark's built-in Hive support, embedded metastore
+    warehouse_dir: "spark-warehouse"   # local folder Spark creates automatically
+    # No separate MySQL connection needed for the warehouse itself -- tables
+    # are created via .saveAsTable() and queried through Spark SQL.
 
 # -----------------------------------------------------------------------------
 # Table naming conventions
@@ -59,6 +57,8 @@ pipeline_jobs:
     script_path: "pipeline/jobs/load_customers.py"
   - name: load_orders
     script_path: "pipeline/jobs/load_orders.py"
+  - name: load_order_items
+    script_path: "pipeline/jobs/load_order_items.py"
   - name: load_products
     script_path: "pipeline/jobs/load_products.py"
   - name: load_sellers
@@ -84,6 +84,53 @@ data_quality:
     fail_on_column_removed: true
     fail_on_type_changed: true
     warn_on_column_added: true    # new columns warn, don't fail (non-breaking)
+
+  # Per-table check definitions. This is what makes the DQ engine
+  # config-driven: adding a new table to check, or changing which columns
+  # matter, is a config edit here, not a code change.
+  tables:
+    - name: stg_customers
+      key_columns: [customer_id]
+      null_check_columns: [customer_id, customer_city, customer_state]
+      freshness_check: true
+
+    - name: stg_orders
+      key_columns: [order_id]
+      null_check_columns: [order_id, customer_id, order_status]
+      freshness_check: true
+
+    - name: stg_order_items
+      key_columns: [order_id, order_item_id]
+      null_check_columns: [order_id, product_id, seller_id, price]
+      freshness_check: true
+
+    - name: stg_products
+      key_columns: [product_id]
+      null_check_columns: [product_id, product_category_name, product_weight_g]
+      freshness_check: true
+
+    - name: stg_sellers
+      key_columns: [seller_id]
+      null_check_columns: [seller_id]
+      freshness_check: true
+
+    - name: Fact_Order_Items
+      key_columns: [order_id, order_item_id]
+      null_check_columns: [order_id, product_id, seller_id, customer_id, date_key]
+      freshness_check: true
+      referential_integrity:
+        - column: customer_id
+          parent_table: Dim_Customer
+          parent_column: customer_id
+        - column: product_id
+          parent_table: Dim_Product
+          parent_column: product_id
+        - column: seller_id
+          parent_table: Dim_Seller
+          parent_column: seller_id
+        - column: date_key
+          parent_table: Dim_Date
+          parent_column: date_key
 
 # -----------------------------------------------------------------------------
 # Alerting
